@@ -271,9 +271,9 @@
             "autoUpgradeMinorVersion": true,
             "settings": {
               "fileUris": [
-                "https://raw.githubusercontent.com/aayush-kej/GITTest/main/test.ps1"
+                "https://raw.githubusercontent.com/anplabbox/WorkingLabs/main/AppGWV2-http.ps1"
               ],
-              "commandToExecute": "powershell.exe -ExecutionPolicy Unrestricted -File test.ps1"
+              "commandToExecute": "powershell.exe -ExecutionPolicy Unrestricted -File AppGWV2-http.ps1"
             }
           }
         },
