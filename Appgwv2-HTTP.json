@@ -1,0 +1,398 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "metadata": {
+      "_generator": {
+        "name": "bicep",
+        "version": "0.8.9.13224",
+        "templateHash": "15495738823141086515"
+      }
+    },
+    "parameters": {
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+              "description": "Location for all resources."
+            }
+          },
+          "adminUsername": {
+            "type": "string",
+            "metadata": {
+              "description": "Username for the Virtual Machine."
+            }
+          },
+          "adminPassword": {
+            "type": "secureString",
+            "minLength": 12,
+            "metadata": {
+              "description": "Password for the Virtual Machine."
+            }
+          },
+          "YourPublicIP": {
+            "type": "string",
+            "defaultValue": "1.1.1.1/32",
+            "metadata": {
+              "description": "The Public ip that will be used to connect to the VM"
+            }
+          }
+      },
+
+    "variables": {
+        "VnetName": "ApplicationGW-vnet",
+        "VMSubnetName": "VM-Subnet",
+        "AGWSubnetName": "AppGwV2-Subnet",
+        "VnetAddressSpace": "10.1.0.0/16",
+        "VMSubnetAddressSpace": "10.1.1.0/24",
+        "AGWSubnetAddressSpace": "10.1.0.0/24",
+        "BackendNSG": "VM-Subnet-NSG",
+        "AppGWNSG": "APPGW-Subnet-NSG",
+        "VMName": "BackendVM1",
+        "VMNIC": "[concat(variables('VMName'), '-NIC')]",
+        "VMPIP": "[concat(variables('VMName'), '-PIP')]",
+        "applicationGateWayName": "APPGWv2-HTTP",
+        "AppGWPIP": "[concat(variables('applicationGateWayName'), '-PIP')]"
+    },
+
+    "resources": [
+       {
+          "type": "Microsoft.Network/networkSecurityGroups",
+          "apiVersion": "2022-07-01",
+          "name": "[variables('BackendNSG')]",
+          "location": "[parameters('location')]",
+          "properties": {
+            "securityRules": [
+              {
+                "name": "AllowRDP",
+                "properties": {
+                  "priority": "101",
+                  "protocol": "TCP",
+                  "sourceAddressPrefix": "[parameters('YourPublicIP')]",
+                  "destinationAddressPrefix": "[variables('VMSubnetAddressSpace')]",
+                  "destinationPortRange": "3389",
+                  "sourcePortRange": "*",
+                  "access": "Allow",
+                  "direction": "Inbound"            
+                  }
+              },
+              {
+                "name": "default-allow-443",
+                "properties": {
+                  "priority": 1001,
+                  "access": "Allow",
+                  "direction": "Inbound",
+                  "destinationPortRange": "443",
+                  "protocol": "Tcp",
+                  "sourceAddressPrefix": "*",
+                  "sourcePortRange": "*",
+                  "destinationAddressPrefix": "*"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "Microsoft.Network/networkSecurityGroups",
+          "apiVersion": "2022-07-01",
+          "name": "[variables('AppGWNSG')]",
+          "location": "[parameters('location')]",
+          "properties": {
+            "securityRules": [
+              {
+                "name": "AllowHTTP",
+                
+                "properties": {
+                  "priority": "101",
+                  "protocol": "TCP",
+                  "sourceAddressPrefix": "[parameters('YourPublicIP')]",
+                  "destinationAddressPrefix": "[variables('AGWSubnetAddressSpace')]",
+                  "destinationPortRange": "80",
+                  "sourcePortRange": "*",
+                  "access": "Allow",
+                  "direction": "Inbound"            
+                  }
+              },
+              {
+                "name": "AllowGWMgr",
+                
+                "properties": {
+                  "priority": "102",
+                  "protocol": "TCP",
+                  "sourceAddressPrefix": "GatewayManager",
+                  "destinationAddressPrefix": "*",
+                  "destinationPortRange": "65200-65535",
+                  "sourcePortRange": "*",
+                  "access": "Allow",
+                  "direction": "Inbound"
+                             
+                  }
+              }
+            ]
+          }
+        },
+        {
+          "type": "Microsoft.Network/publicIPAddresses",
+          "apiVersion": "2021-02-01",
+          "name": "[variables('VMPIP')]",
+          "location": "[parameters('location')]",
+          "sku": {
+            "name": "Standard"
+          },
+          "properties": {
+            "publicIPAllocationMethod": "Static"
+          }
+          },
+        {
+          "type": "Microsoft.Network/virtualNetworks",
+          "apiVersion": "2021-02-01",
+          "name": "[variables('VnetName')]",
+          "location": "[parameters('location')]",
+          "properties": {
+            "addressSpace": {
+              "addressPrefixes": [
+                "[variables('VnetAddressSpace')]"
+              ]
+            },
+            "subnets": [
+              {
+                "name": "[variables('AGWSubnetName')]",
+                "properties": {
+                  "addressPrefix": "[variables('AGWSubnetAddressSpace')]",
+                  "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('AppGWNSG'))]"
+                    }
+                }
+
+              },
+              {
+                "name": "[variables('VMSubnetName')]",
+                "properties": {
+                  "addressPrefix": "[variables('VMSubnetAddressSpace')]",
+                  "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('BackendNSG'))]"
+                    }
+                }
+              }
+            ]
+          },
+          
+          "dependsOn": [
+            "[resourceId('Microsoft.Network/networkSecurityGroups', variables('BackendNSG'))]",
+           "[resourceId('Microsoft.Network/networkSecurityGroups', variables('AppGWNSG'))]"
+          ]
+      },
+        {
+          "type": "Microsoft.Network/networkInterfaces",
+          "apiVersion": "2022-07-01",
+          "name": "[variables('VMNIC')]", 
+          "location": "[parameters('location')]",
+          "properties": {
+            "enableAcceleratedNetworking": "True",
+            "ipConfigurations": [
+              {
+                "name": "Ipconfig1",
+                "properties": {
+                  "primary": "True",
+                  "privateIPAllocationMethod": "Static",
+                  "privateIPAddress": "10.1.1.4",
+                  "publicIPAddress": {
+                    "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('VMPIP'))]"
+                  },
+                  "subnet": {
+                  "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('VnetName'), variables('VMSubnetName'))]"
+                  },
+                  "applicationGatewayBackendAddressPools": [
+                {
+                  "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', variables('applicationGateWayName'), 'myBackendPool')]"
+                }
+                  ]
+                }
+              }
+            ]
+          },
+          "dependsOn": [
+            "[resourceId('Microsoft.Network/virtualNetworks', variables('VnetName'))]",
+            "[resourceId('Microsoft.Network/publicIPAddresses', variables('VMPIP'))]",
+            "[resourceId('Microsoft.Network/applicationGateways', variables('applicationGateWayName'))]"
+          ]
+        },
+         {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-03-01",
+            "name": "[variables('VMName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+              "hardwareProfile": {
+                "vmSize": "Standard_D2s_v5"
+              },
+              "osProfile": {
+                "computerName": "[variables('VMName')]",
+                "adminUsername": "[parameters('adminUsername')]",
+                "adminPassword": "[parameters('adminPassword')]"
+              },
+              "storageProfile": {
+                "imageReference": {
+                  "publisher": "MicrosoftWindowsServer",
+                  "offer": "WindowsServer",
+                  "sku": "2022-datacenter",
+                  "version": "latest"
+                },
+                "osDisk": {
+                  "createOption": "FromImage",
+                  "managedDisk": {
+                    "storageAccountType": "StandardSSD_LRS"
+                  }
+                }
+              },
+              "networkProfile": {
+                "networkInterfaces": [
+                  {
+                    "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('VMNIC'))]"
+                  }
+                ]
+            }
+          },
+          "dependsOn": [
+            "[resourceId('Microsoft.Network/networkInterfaces', variables('VMNIC'))]"
+            ]
+        },
+        {
+          "type": "Microsoft.Compute/virtualMachines/extensions",
+          "apiVersion": "2021-04-01",
+          "name": "[concat(variables('VMName'),'/', 'InstallWebServer')]",
+          "location": "[parameters('location')]",
+          "dependsOn": [
+            "[concat('Microsoft.Compute/virtualMachines/',variables('VMName'))]"
+          ],
+          "properties": {
+            "publisher": "Microsoft.Compute",
+            "type": "CustomScriptExtension",
+            "typeHandlerVersion": "1.7",
+            "autoUpgradeMinorVersion": true,
+            "settings": {
+              "fileUris": [
+                "https://raw.githubusercontent.com/aayush-kej/GITTest/main/test.ps1"
+              ],
+              "commandToExecute": "powershell.exe -ExecutionPolicy Unrestricted -File test.ps1"
+            }
+          }
+        },
+                {
+          "type": "Microsoft.Network/publicIPAddresses",
+          "apiVersion": "2021-02-01",
+          "name": "[variables('AppGWPIP')]",
+          "location": "[parameters('location')]",
+          "sku": {
+            "name": "Standard"
+          },
+          "properties": {
+            "publicIPAllocationMethod": "Static"
+          }
+          },
+        
+        {
+          "type": "Microsoft.Network/ApplicationGateways",
+          "apiVersion": "2021-05-01",
+          "name": "[variables('applicationGateWayName')]",
+          "location": "[parameters('location')]",
+          "properties": {
+            "sku": {
+            "name": "Standard_v2",
+            "tier": "Standard_v2"
+            },
+        "gatewayIPConfigurations": [
+          {
+            "name": "appGatewayIpConfig",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('VnetName'), variables('AGWSubnetName'))]"
+              }
+            }
+          }
+        ],
+        "frontendIPConfigurations": [
+          {
+            "name": "appGwPublicFrontendIp",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('AppGWPIP'))]"
+              }
+            }
+          }
+        ],
+        "frontendPorts": [
+          {
+            "name": "port_80",
+            "properties": {
+              "port": 80
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "myBackendPool",
+            "properties": {}
+          }
+        ],
+        "backendHttpSettingsCollection": [
+          {
+            "name": "myHTTPSetting",
+            "properties": {
+              "port": 80,
+              "protocol": "Http",
+              "cookieBasedAffinity": "Disabled",
+              "pickHostNameFromBackendAddress": false,
+              "requestTimeout": 20
+            }
+          }
+        ],
+        "httpListeners": [
+          {
+            "name": "myListener",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', variables('applicationGateWayName'), 'appGwPublicFrontendIp')]"
+              },
+              "frontendPort": {
+                "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', variables('applicationGateWayName'), 'port_80')]"
+              },
+              "protocol": "Http",
+              "requireServerNameIndication": false
+            }
+          }
+        ],
+        "requestRoutingRules": [
+          {
+            "name": "myRoutingRule",
+            "properties": {
+              "ruleType": "Basic",
+              "httpListener": {
+                "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', variables('applicationGateWayName'), 'myListener')]"
+              },
+              "backendAddressPool": {
+                "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', variables('applicationGateWayName'), 'myBackendPool')]"
+              },
+              "backendHttpSettings": {
+                "id": "[resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', variables('applicationGateWayName'), 'myHTTPSetting')]"
+              }
+            }
+          }
+        ],
+        "enableHttp2": false,
+        "autoscaleConfiguration": {
+          "minCapacity": 0,
+          "maxCapacity": 10
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('AppGWPIP'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('VnetName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('AppGWNSG'))]"
+      ]
+    }
+       
+ ]
+}
+
+
